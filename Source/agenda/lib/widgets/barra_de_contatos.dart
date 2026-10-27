@@ -11,6 +11,8 @@ class BarraDeContatos extends StatelessWidget {
     this.onEdit,
     this.onDelete,
     this.onToggleFavorito,
+    this.mostrarAvatar = true,
+    this.compacto = false,
   });
 
   final Contato contact;
@@ -18,6 +20,8 @@ class BarraDeContatos extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onToggleFavorito;
+  final bool mostrarAvatar;
+  final bool compacto;
 
   @override
   Widget build(BuildContext context) {
@@ -27,13 +31,22 @@ class BarraDeContatos extends StatelessWidget {
 
     return ListTile(
       onTap: onTap,
-      leading: AvatarContato(initials: contact.initials, foto: contact.foto),
+      dense: compacto,
+      leading: mostrarAvatar
+          ? AvatarContato(initials: contact.initials, foto: contact.foto)
+          : null,
       title: Text(contact.nome),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (hasEmail) Text(contact.email, maxLines: 1, overflow: TextOverflow.ellipsis),
-          if (hasPhone) Text(contact.telefone, maxLines: 1, overflow: TextOverflow.ellipsis),
+          if (hasEmail)
+            Text(contact.email, maxLines: 1, overflow: TextOverflow.ellipsis),
+          if (hasPhone)
+            Text(
+              contact.telefone,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           if (!hasEmail && !hasPhone)
             Text('Sem nenhum contato salvo', style: theme.textTheme.bodySmall),
         ],

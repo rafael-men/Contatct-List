@@ -16,11 +16,18 @@ import 'aniversarios.dart';
 import 'categorias.dart';
 import '../widgets/formulario_contato.dart';
 import 'pesquisa_avancada.dart';
+import 'configuracoes.dart';
+import '../services/preferencias_app.dart';
 
 class ListaContatos extends StatefulWidget {
-  const ListaContatos({super.key, required this.store});
+  const ListaContatos({
+    super.key,
+    required this.store,
+    required this.preferencias,
+  });
 
   final ContatoStore store;
+  final PreferenciasApp preferencias;
 
   @override
   State<ListaContatos> createState() => _ListaContatosState();
@@ -44,30 +51,26 @@ class _ListaContatosState extends State<ListaContatos> {
         ),
       ),
     );
-    if (dados == null || !context.mounted) return;
+    if (dados == null || !mounted) return;
 
     if (contato == null) {
       widget.store.add(dados);
     } else {
       widget.store.update(contato, dados);
     }
-    if (!context.mounted) return;
+    if (!mounted) return;
 
     final msg = contato == null
         ? '${dados.nome} adicionado'
         : '${dados.nome} atualizado';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _abrirDetalhes(Contato contato) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => DetalhesContato(
-          store: widget.store,
-          contatoId: contato.id,
-        ),
+        builder: (_) =>
+            DetalhesContato(store: widget.store, contatoId: contato.id),
       ),
     );
   }
@@ -99,85 +102,83 @@ class _ListaContatosState extends State<ListaContatos> {
     if (confirma != true || !mounted) return;
     widget.store.remove(contato);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${contato.nome} removido')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${contato.nome} removido')));
   }
 
   Future<void> _importarContatos() async {
-  try {
-    final arquivo = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: ['csv', 'xlsx'],
-    );
+    try {
+      final arquivo = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['csv', 'xlsx'],
+      );
 
-    if (arquivo == null) return;
+      if (arquivo == null) return;
 
-    final bytes = await arquivo.readAsBytes();
-    final extensao = arquivo.extension?.toLowerCase();
+      final bytes = await arquivo.readAsBytes();
+      final extensao = arquivo.extension?.toLowerCase();
 
-    if (extensao == null) {
-      throw const FormatException('O arquivo não tem uma extensão válida.');
+      if (extensao == null) {
+        throw const FormatException('O arquivo não tem uma extensão válida.');
+      }
+
+      final contatos = ContatosArquivo.importar(
+        bytes: bytes,
+        extensao: extensao,
+      );
+
+      widget.store.importarContatos(contatos);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${contatos.length} contato(s) importado(s).')),
+      );
+    } catch (erro) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Falha ao importar: $erro')));
     }
+  }
 
-    final contatos = ContatosArquivo.importar(
-      bytes: bytes,
-      extensao: extensao,
-    );
-
-    widget.store.importarContatos(contatos);
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${contatos.length} contato(s) importado(s).')),
-    );
-  } catch (erro) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Falha ao importar: $erro')),
+  Future<void> _exportarCsv() async {
+    await _salvarBackup(
+      nomeArquivo: 'backup_contatos.csv',
+      bytes: ContatosArquivo.exportarCsv(widget.store.todos),
     );
   }
-}
 
-Future<void> _exportarCsv() async {
-  await _salvarBackup(
-    nomeArquivo: 'backup_contatos.csv',
-    bytes: ContatosArquivo.exportarCsv(widget.store.todos),
-  );
-}
-
-Future<void> _exportarExcel() async {
-  await _salvarBackup(
-    nomeArquivo: 'backup_contatos.xlsx',
-    bytes: ContatosArquivo.exportarExcel(widget.store.todos),
-  );
-}
-
-Future<void> _salvarBackup({
-  required String nomeArquivo,
-  required Uint8List bytes,
-}) async {
-  try {
-    await FilePicker.saveFile(
-      fileName: nomeArquivo,
-      bytes: bytes,
-    );
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Exportação concluída.')),
-    );
-  } catch (erro) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Falha ao exportar: $erro')),
+  Future<void> _exportarExcel() async {
+    await _salvarBackup(
+      nomeArquivo: 'backup_contatos.xlsx',
+      bytes: ContatosArquivo.exportarExcel(widget.store.todos),
     );
   }
+
+  Future<void> _salvarBackup({
+    required String nomeArquivo,
+    required Uint8List bytes,
+  }) async {
+    try {
+      await FilePicker.saveFile(fileName: nomeArquivo, bytes: bytes);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Exportação concluída.')));
+    } catch (erro) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Falha ao exportar: $erro')));
+    }
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -214,6 +215,15 @@ Future<void> _salvarBackup({
                 _exportarExcel();
                 return;
               }
+              if (valor == 'configuracoes') {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        Configuracoes(preferencias: widget.preferencias),
+                  ),
+                );
+                return;
+              }
 
               final pagina = switch (valor) {
                 'categorias' => Categorias(store: widget.store),
@@ -221,16 +231,23 @@ Future<void> _salvarBackup({
                 'aniversarios' => Aniversarios(store: widget.store),
                 _ => PesquisaAvancada(store: widget.store),
               };
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => pagina),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => pagina));
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'categorias', child: Text('Categorias')),
               PopupMenuItem(value: 'grupos', child: Text('Grupos')),
               PopupMenuItem(value: 'aniversarios', child: Text('Aniversários')),
-              PopupMenuItem(value: 'pesquisa', child: Text('Pesquisa avançada')),
+              PopupMenuItem(
+                value: 'pesquisa',
+                child: Text('Pesquisa avançada'),
+              ),
               PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'configuracoes',
+                child: Text('Configurações'),
+              ),
               PopupMenuItem(
                 value: 'importar_contatos',
                 child: Text('Importar contatos'),
@@ -276,13 +293,15 @@ Future<void> _salvarBackup({
           ),
           Expanded(
             child: ListenableBuilder(
-              listenable: widget.store,
+              listenable: Listenable.merge([widget.store, widget.preferencias]),
               builder: (_, _) {
                 final lista = widget.store.contacts;
                 if (lista.isEmpty) {
                   final vazioPorBusca = widget.store.query.isNotEmpty;
                   return EstadoVazio(
-                    icon: vazioPorBusca ? Icons.search_off : Icons.people_outline,
+                    icon: vazioPorBusca
+                        ? Icons.search_off
+                        : Icons.people_outline,
                     title: vazioPorBusca
                         ? 'Nada encontrado'
                         : 'Nenhum contato ainda',
@@ -297,13 +316,18 @@ Future<void> _salvarBackup({
                   itemBuilder: (context, i) {
                     final c = lista[i];
                     return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 3,
+                      ),
                       child: BarraDeContatos(
                         contact: c,
                         onTap: () => _abrirDetalhes(c),
                         onEdit: () => _abrirFormulario(c),
                         onDelete: () => _excluir(c),
                         onToggleFavorito: () => widget.store.toggleFavorito(c),
+                        mostrarAvatar: widget.preferencias.mostrarAvatares,
+                        compacto: widget.preferencias.listaCompacta,
                       ),
                     );
                   },

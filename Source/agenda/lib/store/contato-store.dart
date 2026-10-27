@@ -5,7 +5,6 @@ import '../models/grupo.dart';
 
 class ContatoStore extends ChangeNotifier {
 
-  //Métodos para operação com storage em memória
   final List<Contato> _contacts = <Contato>[];
   final Set<String> _categorias = <String>{'Família', 'Amigos', 'Trabalho'};
   final List<Grupo> _grupos = <Grupo>[];
