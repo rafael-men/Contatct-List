@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../store/contato-store.dart';
 
 class Categorias extends StatelessWidget {

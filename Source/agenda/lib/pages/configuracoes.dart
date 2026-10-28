@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../services/preferencias_app.dart';
 
 class Configuracoes extends StatelessWidget {

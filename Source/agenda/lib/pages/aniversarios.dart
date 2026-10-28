@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../models/contato.dart';
 import '../store/contato-store.dart';
 import '../widgets/avatar_contato.dart';

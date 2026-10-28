@@ -1,7 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 
 import '../models/contato.dart';
 import '../models/dados_contato.dart';
@@ -144,6 +147,181 @@ class _ListaContatosState extends State<ListaContatos> {
     }
   }
 
+  Future<void> _importarDaAgendaDoCelular() async {
+    if (kIsWeb ||
+        ![TargetPlatform.android, TargetPlatform.iOS].contains(
+          defaultTargetPlatform,
+        )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A importação da agenda está disponível no Android e iOS.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    try {
+      var permissao = await FlutterContacts.permissions.check(PermissionType.read);
+      if (permissao != PermissionStatus.granted &&
+          permissao != PermissionStatus.limited) {
+        final continuar = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Acesso aos contatos'),
+            content: const Text(
+              'Para importar sua agenda, o app precisa da sua autorização para ler os contatos do dispositivo.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Agora não'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Continuar'),
+              ),
+            ],
+          ),
+        );
+        if (continuar != true || !mounted) return;
+
+        permissao = await FlutterContacts.permissions.request(PermissionType.read);
+      }
+      if (permissao != PermissionStatus.granted &&
+          permissao != PermissionStatus.limited) {
+        if (!mounted) return;
+        final bloqueada = permissao == PermissionStatus.permanentlyDenied ||
+            permissao == PermissionStatus.restricted;
+        final abrirConfiguracoes = bloqueada
+            ? await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Permissão bloqueada'),
+                  content: const Text(
+                    'Autorize o acesso aos contatos nas configurações do app para importar sua agenda.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Abrir configurações'),
+                    ),
+                  ],
+                ),
+              )
+            : false;
+        if (abrirConfiguracoes == true) {
+          await FlutterContacts.permissions.openSettings();
+          return;
+        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Acesso aos contatos não autorizado.')),
+        );
+        return;
+      }
+
+      final contatos = await FlutterContacts.getAll(
+        properties: {ContactProperty.phone, ContactProperty.email},
+      );
+      if (!mounted) return;
+      if (contatos.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Nenhum contato encontrado no dispositivo.'),
+          ),
+        );
+        return;
+      }
+
+      final confirmar = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Importar contatos'),
+          content: Text(
+            'Deseja importar ${contatos.length} contato(s) do dispositivo?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Importar'),
+            ),
+          ],
+        ),
+      );
+      if (confirmar != true || !mounted) return;
+
+      final telefonesExistentes = widget.store.todos
+          .map((contato) => contato.telefone.replaceAll(RegExp(r'\D'), ''))
+          .where((telefone) => telefone.isNotEmpty)
+          .toSet();
+      final emailsExistentes = widget.store.todos
+          .map((contato) => contato.email.trim().toLowerCase())
+          .where((email) => email.isNotEmpty)
+          .toSet();
+      var importados = 0;
+
+      for (final contato in contatos) {
+        final nome = contato.displayName?.trim() ?? '';
+        if (nome.isEmpty) continue;
+
+        final telefone = contato.phones.isEmpty
+            ? ''
+            : contato.phones.first.number.trim();
+        final email = contato.emails.isEmpty
+            ? ''
+            : contato.emails.first.address.trim();
+        final telefoneNormalizado = telefone.replaceAll(RegExp(r'\D'), '');
+        final emailNormalizado = email.toLowerCase();
+
+        final duplicado =
+            (telefoneNormalizado.isNotEmpty &&
+                telefonesExistentes.contains(telefoneNormalizado)) ||
+            (emailNormalizado.isNotEmpty &&
+                emailsExistentes.contains(emailNormalizado));
+        if (duplicado) {
+          continue;
+        }
+
+        if (telefoneNormalizado.isNotEmpty) {
+          telefonesExistentes.add(telefoneNormalizado);
+        }
+        if (emailNormalizado.isNotEmpty) {
+          emailsExistentes.add(emailNormalizado);
+        }
+
+        widget.store.add(
+          DadosContato(nome: nome, telefone: telefone, email: email),
+        );
+        importados++;
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$importados contato(s) importado(s); '
+            '${contatos.length - importados} ignorado(s) por duplicidade ou dados inválidos.',
+          ),
+        ),
+      );
+    } catch (erro) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao acessar os contatos: $erro')),
+      );
+    }
+  }
+
   Future<void> _exportarCsv() async {
     await _salvarBackup(
       nomeArquivo: 'backup_contatos.csv',
@@ -183,8 +361,34 @@ class _ListaContatosState extends State<ListaContatos> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Lista Telefônica'),
+        title: Row(
+          children: [
+            Image.asset(
+              'lib/assets/logo.png',
+              width: 36,
+              height: 36,
+            ),
+            const SizedBox(width: 8),
+            const Text('Lista Telefônica'),
+          ],
+        ),
         actions: [
+          ListenableBuilder(
+            listenable: widget.preferencias,
+            builder: (context, _) => IconButton(
+              tooltip: widget.preferencias.escuro
+                  ? 'Ativar modo claro'
+                  : 'Ativar modo escuro',
+              icon: Icon(
+                widget.preferencias.escuro
+                    ? Icons.light_mode_outlined
+                    : Icons.dark_mode_outlined,
+              ),
+              onPressed: () => widget.preferencias.definirTema(
+                !widget.preferencias.escuro,
+              ),
+            ),
+          ),
           ListenableBuilder(
             listenable: widget.store,
             builder: (context, _) {
@@ -205,6 +409,10 @@ class _ListaContatosState extends State<ListaContatos> {
             onSelected: (valor) {
               if (valor == 'importar_contatos') {
                 _importarContatos();
+                return;
+              }
+              if (valor == 'importar_dispositivo') {
+                _importarDaAgendaDoCelular();
                 return;
               }
               if (valor == 'exportar_csv') {
@@ -244,6 +452,10 @@ class _ListaContatosState extends State<ListaContatos> {
                 child: Text('Pesquisa avançada'),
               ),
               PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'importar_dispositivo',
+                child: Text('Importar contatos do dispositivo'),
+              ),
               PopupMenuItem(
                 value: 'configuracoes',
                 child: Text('Configurações'),
